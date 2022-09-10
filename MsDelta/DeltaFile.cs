@@ -165,7 +165,10 @@ namespace MsDelta
             var patchBuffer = reader.ReadBuffer();
             Debug.Assert(reader.AtEnd);
 
-            FileTypeHeader = new PreProcess(Code, preProcessBuffer);
+            if (preProcessBuffer.Length > 0)
+            {
+                FileTypeHeader = new PreProcess(Code, preProcessBuffer);
+            }
         }
     }
 }
