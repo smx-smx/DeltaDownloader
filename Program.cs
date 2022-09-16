@@ -221,31 +221,45 @@ namespace DeltaDownloader
             Console.Write(ExtractDeltaFileInformation(path));
         }
 
+        static int GenerateDeltaSubFolderInformation(string directory)
+        {
+            int filesCreated = 0;
+
+            var files = Directory.GetFiles(directory);
+            foreach (var file in files)
+            {
+                var informationFile = file + ".dd.txt";
+                if (File.Exists(informationFile))
+                {
+                    throw new Exception(string.Format("{0} already exists", informationFile));
+                }
+
+                var information = ExtractDeltaFileInformation(file);
+                File.WriteAllText(informationFile, information);
+                filesCreated++;
+            }
+
+            foreach (var subdirectory in Directory.EnumerateDirectories(directory))
+            {
+                filesCreated += GenerateDeltaSubFolderInformation(subdirectory);
+            }
+
+            return filesCreated;
+        }
+
         static void GenerateDeltaFolderInformation(string directory)
         {
             int filesCreated = 0;
+
             foreach (var folder in Directory.EnumerateDirectories(directory))
             {
                 var fFolder = Path.Combine(folder, "f");
-                if (!Directory.Exists(fFolder))
+                if (Directory.Exists(fFolder))
                 {
-                    continue;
-                }
-
-                var files = Directory.GetFiles(fFolder);
-                foreach (var file in files)
-                {
-                    var informationFile = file + ".dd.txt";
-                    if (File.Exists(informationFile))
-                    {
-                        throw new Exception(string.Format("{0} already exists", informationFile));
-                    }
-
-                    var information = ExtractDeltaFileInformation(file);
-                    File.WriteAllText(informationFile, information);
-                    filesCreated++;
+                    filesCreated += GenerateDeltaSubFolderInformation(fFolder);
                 }
             }
+
             Console.WriteLine("{0} information files were created", filesCreated);
         }
 
