@@ -162,6 +162,7 @@ namespace DeltaDownloader
             var delta = new DeltaFile(bytes);
 
             var hashStr = BitConverter.ToString(delta.Hash).Replace("-", "");
+            var additionalHashStr = BitConverter.ToString(delta.AdditionalHash).Replace("-", "");
 
             sb.Append("### Header").AppendLine()
                 .AppendFormat("FileTime: {0}", delta.FileTime).AppendLine()
@@ -170,7 +171,11 @@ namespace DeltaDownloader
                 .AppendFormat("Flags: {0}", delta.Flags).AppendLine()
                 .AppendFormat("TargetSize: {0}", delta.TargetSize).AppendLine()
                 .AppendFormat("HashAlgorithm: {0}", delta.HashAlgorithm).AppendLine()
-                .AppendFormat("Hash: {0}", hashStr).AppendLine();
+                .AppendFormat("Hash: {0}", hashStr).AppendLine()
+                .AppendFormat("HeaderInfoSize: {0}", delta.HeaderInfoSize).AppendLine()
+                .AppendFormat("IsPa31: {0}", delta.IsPa31).AppendLine()
+                .AppendFormat("DeltaClientMinVersion: {0}", delta.DeltaClientMinVersion).AppendLine()
+                .AppendFormat("AdditionalHash: {0}", additionalHashStr).AppendLine();
 
             var fileTypeHeader = delta.FileTypeHeader;
             if (fileTypeHeader == null)
