@@ -178,7 +178,10 @@ namespace DeltaDownloader
                 return sb.ToString();
             }
 
-            var riftTableStr = string.Join(";", fileTypeHeader.RiftTable.Select(x => x.Key + "," + x.Value).ToArray());
+            var riftTableStr =
+                fileTypeHeader.RiftTable != null
+                    ? string.Join(";", fileTypeHeader.RiftTable.Select(x => x.Key + "," + x.Value).ToArray())
+                    : "(none)";
 
             sb.AppendLine().Append("### FileTypeHeader").AppendLine()
                 .AppendFormat("ImageBase: {0}", fileTypeHeader.ImageBase).AppendLine()
