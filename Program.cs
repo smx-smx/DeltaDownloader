@@ -122,20 +122,11 @@ namespace DeltaDownloader
             } catch { }
         }
 
-        static async Task Main(string[] args)
+        static async Task SearchForDeltaFiles(string directory)
         {
-            if (args.Length != 1)
-            {
-                Console.WriteLine("Usage: {0} <dir>", Path.GetFileName(System.Reflection.Assembly.GetEntryAssembly().Location));
-                Console.WriteLine();
-                Console.WriteLine("Given a folder containing delta compressed PE files from a Windows update package,");
-                Console.WriteLine("uses the data in the delta compression header to search for the PE files on the MS symbol server.");
-                Console.WriteLine();
-                return;
-            }
             var tasks = new List<Task>();
             Console.Write("Searching for delta files");
-            Process(args[0], args[0]);
+            Process(directory, directory);
             Console.WriteLine();
             Console.WriteLine("Attempting to find {0} files on the Microsoft Symbol Server...", s_files.Count);
             foreach (var file in s_files)
@@ -158,9 +149,158 @@ namespace DeltaDownloader
             {
                 sb.AppendLine(aria);
             }
-            var ariaPath = Path.Combine(args[0], "aria2.txt");
+            var ariaPath = Path.Combine(directory, "aria2.txt");
             File.WriteAllText(ariaPath, sb.ToString());
             Console.WriteLine("Written aria2 input file to {0}", ariaPath);
+        }
+
+        static string ExtractDeltaFileInformation(string path)
+        {
+            var sb = new StringBuilder();
+
+            var bytes = File.ReadAllBytes(path);
+            var delta = new DeltaFile(bytes);
+
+            var hashStr = BitConverter.ToString(delta.Hash).Replace("-", "");
+            var additionalHashStr = BitConverter.ToString(delta.AdditionalHash).Replace("-", "");
+
+            sb.Append("### Header").AppendLine()
+                .AppendFormat("FileTime: {0}", delta.FileTime).AppendLine()
+                .AppendFormat("Version: {0}", delta.Version).AppendLine()
+                .AppendFormat("Code: {0}", delta.Code).AppendLine()
+                .AppendFormat("Flags: {0}", delta.Flags).AppendLine()
+                .AppendFormat("TargetSize: {0}", delta.TargetSize).AppendLine()
+                .AppendFormat("HashAlgorithm: {0}", delta.HashAlgorithm).AppendLine()
+                .AppendFormat("Hash: {0}", hashStr).AppendLine()
+                .AppendFormat("HeaderInfoSize: {0}", delta.HeaderInfoSize).AppendLine()
+                .AppendFormat("IsPa31: {0}", delta.IsPa31).AppendLine()
+                .AppendFormat("DeltaClientMinVersion: {0}", delta.DeltaClientMinVersion).AppendLine()
+                .AppendFormat("AdditionalHash: {0}", additionalHashStr).AppendLine();
+
+            var fileTypeHeader = delta.FileTypeHeader;
+            if (fileTypeHeader == null)
+            {
+                return sb.ToString();
+            }
+
+            var riftTableStr =
+                fileTypeHeader.RiftTable != null
+                    ? string.Join(";", fileTypeHeader.RiftTable.Select(x => x.Key + "," + x.Value).ToArray())
+                    : "(none)";
+
+            sb.AppendLine().Append("### FileTypeHeader").AppendLine()
+                .AppendFormat("ImageBase: {0}", fileTypeHeader.ImageBase).AppendLine()
+                .AppendFormat("GlobalPointer: {0}", fileTypeHeader.GlobalPointer).AppendLine()
+                .AppendFormat("TimeStamp: {0}", fileTypeHeader.TimeStamp).AppendLine()
+                .AppendFormat("RiftTable: {0}", riftTableStr).AppendLine();
+
+            var cliMetadata = fileTypeHeader.CliMetadata;
+            if (cliMetadata == null)
+            {
+                return sb.ToString();
+            }
+
+            sb.AppendLine().Append("### CliMetadata").AppendLine()
+                .AppendFormat("StartOffset: {0}", cliMetadata.m_StartOffset).AppendLine()
+                .AppendFormat("Size: {0}", cliMetadata.m_Size).AppendLine()
+                .AppendFormat("BaseRva: {0}", cliMetadata.m_BaseRva).AppendLine()
+                .AppendFormat("StreamsNumber: {0}", cliMetadata.m_StreamsNumber).AppendLine()
+                .AppendFormat("StreamHeadersOffset: {0}", cliMetadata.m_StreamHeadersOffset).AppendLine()
+                .AppendFormat("StringsStreamOffset: {0}", cliMetadata.m_StringsStreamOffset).AppendLine()
+                .AppendFormat("StringsStreamSize: {0}", cliMetadata.m_StringsStreamSize).AppendLine()
+                .AppendFormat("USStreamOffset: {0}", cliMetadata.m_USStreamOffset).AppendLine()
+                .AppendFormat("USStreamSize: {0}", cliMetadata.m_USStreamSize).AppendLine()
+                .AppendFormat("BlobStreamOffset: {0}", cliMetadata.m_BlobStreamOffset).AppendLine()
+                .AppendFormat("BlobStreamSize: {0}", cliMetadata.m_BlobStreamSize).AppendLine()
+                .AppendFormat("GuidStreamOffset: {0}", cliMetadata.m_GuidStreamOffset).AppendLine()
+                .AppendFormat("GuidStreamSize: {0}", cliMetadata.m_GuidStreamSize).AppendLine()
+                .AppendFormat("TablesStreamOffset: {0}", cliMetadata.m_TablesStreamOffset).AppendLine()
+                .AppendFormat("TablesStreamSize: {0}", cliMetadata.m_TablesStreamSize).AppendLine()
+                .AppendFormat("LongStringsStream: {0}", cliMetadata.m_LongStringsStream).AppendLine()
+                .AppendFormat("LongGuidStream: {0}", cliMetadata.m_LongGuidStream).AppendLine()
+                .AppendFormat("LongBlobStream: {0}", cliMetadata.m_LongBlobStream).AppendLine()
+                .AppendFormat("ValidTables: {0}", cliMetadata.m_ValidTables).AppendLine();
+
+            return sb.ToString();
+        }
+
+        static void PrintDeltaFileInformation(string path)
+        {
+            Console.Write(ExtractDeltaFileInformation(path));
+        }
+
+        static int GenerateDeltaSubFolderInformation(string directory)
+        {
+            int filesCreated = 0;
+
+            var files = Directory.GetFiles(directory);
+            foreach (var file in files)
+            {
+                var informationFile = file + ".dd.txt";
+                if (File.Exists(informationFile))
+                {
+                    throw new Exception(string.Format("{0} already exists", informationFile));
+                }
+
+                var information = ExtractDeltaFileInformation(file);
+                File.WriteAllText(informationFile, information);
+                filesCreated++;
+            }
+
+            foreach (var subdirectory in Directory.EnumerateDirectories(directory))
+            {
+                filesCreated += GenerateDeltaSubFolderInformation(subdirectory);
+            }
+
+            return filesCreated;
+        }
+
+        static void GenerateDeltaFolderInformation(string directory)
+        {
+            int filesCreated = 0;
+
+            foreach (var folder in Directory.EnumerateDirectories(directory))
+            {
+                var fFolder = Path.Combine(folder, "f");
+                if (Directory.Exists(fFolder))
+                {
+                    filesCreated += GenerateDeltaSubFolderInformation(fFolder);
+                }
+            }
+
+            Console.WriteLine("{0} information files were created", filesCreated);
+        }
+
+        static async Task Main(string[] args)
+        {
+            if (args.Length == 1)
+            {
+                await SearchForDeltaFiles(args[0]);
+            }
+            else if (args.Length == 2 && args[0] == "/i")
+            {
+                PrintDeltaFileInformation(args[1]);
+            }
+            else if (args.Length == 2 && args[0] == "/g")
+            {
+                GenerateDeltaFolderInformation(args[1]);
+            }
+            else
+            {
+                Console.WriteLine("Usage: {0} <dir>", Path.GetFileName(System.Reflection.Assembly.GetEntryAssembly().Location));
+                Console.WriteLine();
+                Console.WriteLine("Given a folder containing delta compressed PE files from a Windows update package,");
+                Console.WriteLine("uses the data in the delta compression header to search for the PE files on the MS symbol server.");
+                Console.WriteLine();
+                Console.WriteLine("{0} /i <file>", Path.GetFileName(System.Reflection.Assembly.GetEntryAssembly().Location));
+                Console.WriteLine();
+                Console.WriteLine("Given a delta compressed PE file from a Windows update package, print information about it.");
+                Console.WriteLine();
+                Console.WriteLine("{0} /g <dir>", Path.GetFileName(System.Reflection.Assembly.GetEntryAssembly().Location));
+                Console.WriteLine();
+                Console.WriteLine("Given a folder containing delta compressed PE files from a Windows update package,");
+                Console.WriteLine("writes textual information near every delta file.");
+            }
         }
     }
 }
